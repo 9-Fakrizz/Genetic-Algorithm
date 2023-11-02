@@ -1,0 +1,121 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+
+# 1. โหลดข้อมูลจากไฟล์ wdbc.data
+data = pd.read_csv("wdbc.txt", header=None)
+X = data.iloc[:, 2:]  # เลือกคุณลักษณะที่เป็นตัวเลข
+y = data.iloc[:, 1]  # เลือกคลาส (Malignant = M, Benign = B)
+
+# 2. แบ่งข้อมูลเป็นชุดฝึกและชุดทดสอบ
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+y_train = y_train.map({'M': 1, 'B': 0})
+y_test = y_test.map({'M': 1, 'B': 0})
+
+
+def initialize_population(population_size, num_features):
+    return np.random.randint(2, size=(population_size, num_features))
+
+def fitness_function(solution, X_train, X_test, y_train, y_test):
+    selected_features = np.where(solution == 1)[0]
+    if len(selected_features) == 0:
+        return 0
+    X_train_selected = X_train[:, selected_features]
+    X_test_selected = X_test[:, selected_features]
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_selected)
+    X_test_scaled = scaler.transform(X_test_selected)
+
+
+    input_size = X_train_scaled.shape[1]
+    hidden_layer1_size = 100
+    hidden_layer2_size = 50
+    output_size = 1  # มีเพียงคลาสเดียว
+
+    np.random.seed(42)
+    weights_input_hidden1 = np.random.randn(input_size, hidden_layer1_size)
+    weights_hidden1_hidden2 = np.random.randn(hidden_layer1_size, hidden_layer2_size)
+    weights_hidden2_output = np.random.randn(hidden_layer2_size, output_size)
+
+    learning_rate = 0.01
+    num_epochs = 1000
+
+    for epoch in range(num_epochs):
+        # Forward propagation
+        hidden1_input = np.dot(X_train_scaled, weights_input_hidden1)
+        hidden1_output = 1 / (1 + np.exp(-hidden1_input))
+        hidden2_input = np.dot(hidden1_output, weights_hidden1_hidden2)
+        hidden2_output = 1 / (1 + np.exp(-hidden2_input))
+        output = np.dot(hidden2_output, weights_hidden2_output)
+
+        # Backpropagation
+        error = y_train - output
+        d_output = error
+        error_hidden2 = d_output.dot(weights_hidden2_output.T)
+        d_hidden2 = error_hidden2 * hidden2_output * (1 - hidden2_output)
+        error_hidden1 = d_hidden2.dot(weights_hidden1_hidden2.T)
+        d_hidden1 = error_hidden1 * hidden1_output * (1 - hidden1_output)
+
+        # Weight updates
+        weights_hidden2_output += hidden2_output.T.dot(d_output) * learning_rate
+        weights_hidden1_hidden2 += hidden1_output.T.dot(d_hidden2) * learning_rate
+        weights_input_hidden1 += X_train_scaled.T.dot(d_hidden1) * learning_rate
+
+    # ทดสอบกับชุดทดสอบ
+    hidden1_input_test = np.dot(X_test_scaled, weights_input_hidden1)
+    hidden1_output_test = 1 / (1 + np.exp(-hidden1_input_test))
+    hidden2_input_test = np.dot(hidden1_output_test, weights_hidden1_hidden2)
+    hidden2_output_test = 1 / (1 + np.exp(-hidden2_input_test))
+    output_test = np.dot(hidden2_output_test, weights_hidden2_output)
+    predictions = (output_test > 0.5).astype(int)
+    accuracy = accuracy_score(y_test, predictions)
+
+    return accuracy
+
+def genetic_algorithm(population_size, num_features, X_train, X_test, y_train, y_test, generations):
+    population = initialize_population(population_size, num_features)
+    best_solution = None
+    best_fitness = 0
+
+    for generation in range(generations):
+        fitness_scores = []
+
+        for solution in population:
+            fitness = fitness_function(solution, X_train, X_test, y_train, y_test)
+            fitness_scores.append(fitness)
+
+            if fitness > best_fitness:
+                best_solution = solution
+                best_fitness = fitness
+
+        # คำนวณค่าความเหมาะสมของแต่ละโครโมโซมและเลือกใช้โครโมโซมที่ดีที่สุด
+        selection_probabilities = np.array(fitness_scores) / sum(fitness_scores)
+        selected_indices = np.random.choice(range(population_size), size=population_size, p=selection_probabilities)
+        population = population[selected_indices]
+
+        # คำนวณค่าความเหมาะสมของแต่ละโครโมโซมและเลือกใช้โครโมโซมที่ดีที่สุด
+        selection_probabilities = np.array(fitness_scores) / sum(fitness_scores)
+        selected_indices = np.random.choice(range(population_size), size=population_size, p=selection_probabilities)
+        population = population[selected_indices]
+
+        # การกลับกระทำ (mutation)
+        mutation_rate = 0.01
+        for i in range(population_size):
+            if np.random.rand() < mutation_rate:
+                j = np.random.randint(num_features)
+                population[i][j] = 1 - population[i][j]
+
+    return best_solution, best_fitness
+
+population_size = 100
+num_features = X_train.shape[1]
+generations = 50
+
+best_solution, best_fitness = genetic_algorithm(population_size, num_features, X_train.values, X_test.values, y_train.values, y_test.values, generations)
+
+print("Best Solution:", best_solution)
+print("Best Fitness:", best_fitness)
